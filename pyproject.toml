@@ -1,0 +1,62 @@
+[project]
+name = "mommi"
+version = "3.0.0"
+description = "MoMMI - Discord bot for /vg/station13"
+requires-python = ">=3.10"
+dependencies = [
+    "discord.py>=2.4",
+    "aiohttp>=3.9",
+    "aiosqlite>=0.20",
+    "pydantic>=2.6",
+    "python-dateutil>=2.9",
+    "PyYAML>=6.0",
+    "Pint>=0.23",
+    "bottom>=2.2",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+# Player-count graphs. The bot runs fine without it; /graph reports it is missing.
+charts = ["matplotlib>=3.7"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "mypy>=1.9", "ruff>=0.4"]
+
+[project.scripts]
+mommi = "mommi.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+
+# numpy ships stubs using 3.12-only syntax, which mypy rejects when checking
+# against our 3.10 floor. We don't type-check their internals anyway.
+[[tool.mypy.overrides]]
+module = ["numpy.*", "matplotlib.*", "bottom.*", "pint.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "ASYNC"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# A one-shot offline CLI that isn't serving anything; blocking filesystem
+# calls are the right choice there and threading them adds nothing.
+"src/mommi/migrate.py" = ["ASYNC240"]
+# Integration tests shell out to pgrep to check for leaked processes.
+"tests/test_codehandling.py" = ["ASYNC221"]

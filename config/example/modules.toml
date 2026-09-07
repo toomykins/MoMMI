@@ -1,0 +1,114 @@
+# Module settings that aren't per-Discord-server.
+
+[github]
+token = ""                    # A PAT raises the API rate limit from 60/h to 5000/h
+
+# Per-repo settings, keyed by the full owner/name.
+[github.repos."toomykins/vgstation13"]
+show_comments = true
+# Files that clash with a downstream private repo; PRs touching them get labelled.
+secret_repo_files = []
+
+[github.repos."toomykins/vgstation13".labels]
+secret_conflicts = "Secret Repo Conflict"
+
+# `[tag]` in a PR/issue body -> label applied automatically.
+[github.repos."toomykins/vgstation13".autolabels]
+fix = "Bugfix"
+feature = "Feature"
+balance = "Balance"
+
+# Issue/PR state icons. MoMMI can only render a custom emoji if she shares a
+# guild with the server that owns it, so these fall back to Unicode (🟢 🟣 🔴 for
+# PRs, 🟩 🟥 for issues, 👍 👎 for votes) whenever the ID isn't usable. Point them
+# at your own server's emoji if you'd rather have the GitHub-style icons back.
+# [github.emoji]
+# PRopened = 100000000000000009
+# PRmerged = 100000000000000010
+# PRclosed = 100000000000000011
+# ISSopened = 100000000000000012
+# ISSclosed = 100000000000000013
+# upvote = 100000000000000014
+# downvote = 100000000000000015
+
+
+# Run a command when a repo is pushed to (the old Jenkins nudge).
+# [github.shell_exec_on_push."toomykins/vgstation13"]
+# command = "/srv/jenkins/trigger.sh"
+
+
+# Password the game server must present on a nudge.
+[nudge]
+password = "secret"
+
+
+# Player-count sampling for `@MoMMI graph`.
+[playerstats]
+poll-minutes = 5
+retention-days = 90
+
+
+[runtimelog]
+runtime-condenser = "/srv/mommi/runtime-condenser"
+
+
+# Overrides the hardcoded replies, if you'd rather they said something else.
+[links]
+gettingstarted = "https://hackmd.io/@ss14/getting-set-up"
+howdoicode = "i dunno lol"
+
+
+# Code execution. Both are off unless a server also enables them.
+[codehandling]
+# DM snippets are compiled and run under BYOND's -safe sandbox: shell() and any
+# file access outside a throwaway scratch dir raise a "Safety violation", and
+# MoMMI additionally rejects #include and file-resource literals (which read
+# files at COMPILE time, before -safe applies). MoMMI never uses -trusted.
+# dreammaker = "/opt/byond/bin/DreamMaker"
+# dreamdaemon = "/opt/byond/bin/DreamDaemon"
+# byond-system = "/opt/byond"   # defaults to the dir above bin/, so usually omit
+#
+# STRONGLY RECOMMENDED: wrap the whole compile+run in a throwaway chroot holding
+# only the BYOND binaries + system libs + a scratch dir, with no network. This
+# closes the compile-time file-read surface and world.Export() egress that -safe
+# can't. Needs bubblewrap (`apt install bubblewrap`); "bwrap" is found on PATH.
+# sandbox = "bwrap"
+#
+# Resource caps for a run. These use `nice` and `prlimit`, which ship with every
+# Linux (util-linux) -- nothing to install. A snippet is niced to the floor so it
+# can never steal CPU from the bot or the game, and killed if it burns more than
+# cpu-seconds of CPU time or memory-mb of RAM. Defaults shown; usually fine.
+# nice = 19
+# cpu-seconds = 15
+# memory-mb = 512
+
+# Python runs ONLY through this external sandbox; the snippet arrives on stdin
+# and is never interpolated into a shell line. MoMMI has no in-process execution
+# path. Pick ONE of these (or your own); both isolate filesystem and network.
+#
+# bubblewrap (lightweight, no daemon):
+# python-sandbox = "bwrap --ro-bind /usr /usr --ro-bind /lib /lib --ro-bind /lib64 /lib64 --ro-bind /bin /bin --proc /proc --dev /dev --tmpfs /tmp --unshare-all --uid 65534 --gid 65534 --die-with-parent --new-session python3 -I -"
+#
+# docker (heavier, stronger isolation):
+# python-sandbox = "docker run --rm -i --network=none --memory=128m --pids-limit=64 --read-only python:3.12-slim python -I -"
+
+
+# Space Station 14 OOC relay.
+# [ss14.servers.main]
+# password = "secret"
+# api_url = "http://localhost:1212"
+
+
+# IRC bridge. Omit this whole section to leave the bridge idle.
+# [irc.servers.rizon]
+# address = "irc.rizon.net"
+# port = 6697
+# ssl = true
+# [irc.servers.rizon.user]
+# nick = "MoMMI"
+# name = "mommi"
+# realname = "MoMMI"
+# [[irc.servers.rizon.channels]]
+# irc = "#vgstation"
+# server = "vgstation"
+# channel = "coderbus"

@@ -1,0 +1,90 @@
+# Per-Discord-server settings. One [[servers]] block per guild.
+
+[[servers]]
+id = 100000000000000001        # Guild snowflake
+name = "vgstation"             # Internal short name, used by commloop routes
+
+# Channel aliases. Anywhere a channel is named, either form works.
+[servers.channels]
+server_status = 100000000000000002
+ick = 100000000000000003
+adminhelp = 100000000000000004
+coderbus = 100000000000000005
+
+# Permission tiers. Accepts one ID or a list of them.
+[servers.roles]
+OWNER = 100000000000000006
+ADMIN = [100000000000000001]
+CODER = 100000000000000007
+
+
+[servers.modules.responses]
+role = 100000000000000006
+
+# ---- Server status, `who`, `players` and `graph` -------------------------
+[servers.modules.serverstatus]
+default = "vg"
+
+[servers.modules.serverstatus.vg]
+type = "ss13"
+address = "game.ss13.moe"
+port = 7777
+# Channels allowed to see admin counts in `status` output.
+admindata = ["adminhelp"]
+# Set false to hide the `who` player list on this server.
+who_enabled = true
+
+# ---- Game nudges ---------------------------------------------------------
+[servers.modules.gamenudge]
+kill_phrase = "cunt"
+kill_channel = "ick"
+kill_minutes = 5
+
+[servers.modules.gamenudge.ping]
+ick = 100000000000000008
+server_status = 100000000000000008
+adminhelp = 100000000000000006
+
+# Echo server_status nudges into another channel after a delay.
+[servers.modules.gamenudge.server_status.mirror]
+channel = "coderbus"
+delay = 15
+
+# ---- Delayed channel mirror ----------------------------------------------
+[servers.modules]
+mirror = [{ from = "ick", to = "https://discord.com/api/webhooks/.../...", delay = 5 }]
+
+# ---- Ambient responders ---------------------------------------------------
+[servers.modules.based]
+enabled = true
+[servers.modules.wyci]
+enabled = true
+[servers.modules.nanotrasenblockgame]
+enabled = false
+[servers.modules.markov]
+enabled = true
+
+# ---- Restart via TGS ------------------------------------------------------
+[servers.modules.restart]
+roles = [100000000000000001]
+[servers.modules.restart.srv.vg]
+# url = "https://tgs.example.org"
+# key = "vg"
+# token = "secret"
+
+# ---- Runtime logs ---------------------------------------------------------
+[servers.modules.runtimelog]
+base-url = "https://ss13.moe/runtime/"
+
+# ---- Code execution (off by default) --------------------------------------
+[servers.modules.codehandling]
+enabled = false          # flip to true once the toolchain/sandbox is configured
+languages = ["dm"]       # add "python" only once python-sandbox is set
+
+# ---- GitHub lookups -------------------------------------------------------
+[[servers.modules.github.repos]]
+repo = "toomykins/vgstation13"
+prefix = "vg"
+prefix_required = false
+prefix_whitelist = ["coderbus"]
+branch = "Bleeding-Edge"

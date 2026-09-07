@@ -1,0 +1,52 @@
+# Global configuration. Same file, same keys as MoMMI v2.
+
+[bot]
+token = ""                    # Discord bot token
+owner = 100000000000000000    # Bot owner's user ID; always passes every role check
+
+# Optional. Replies when someone lacks the role a command needs.
+# deny-messages = ["*buzz*", "No.", "Absolutely not."]
+
+# Optional. Where dance.gif / away.gif live. Defaults to the packaged assets.
+# files-dir = "/srv/mommi/Files"
+
+
+# The legacy TCP protocol the game server and other senders speak.
+# Wire-identical to v2; nothing on the sending side needs to change.
+[commloop]
+address = "localhost"
+port = 1679
+password = "secret"
+
+# Where to send each (type, meta) pair: a list of [server, channel] targets.
+# Both halves accept either a snowflake or a name from servers.toml.
+[commloop.route.gamenudge]
+"server_status" = [["vgstation", "server_status"]]
+"ick"           = [["vgstation", "ick"]]
+"adminhelp"     = [["vgstation", "adminhelp"]]
+
+[commloop.route.github]
+"toomykins/vgstation13" = [["vgstation", "coderbus"]]
+
+[commloop.route.changelog]
+"" = [["vgstation", "coderbus"]]
+
+[commloop.route.ss14]
+"main" = [["vgstation", "ss14-ooc"]]
+
+
+# The HTTP front end. This replaces the Rust WebMoMMI service and its
+# Rocket.toml -- the key names are carried over unchanged.
+[web]
+enabled = true
+address = "0.0.0.0"
+port = 40000
+github-key = ""               # GitHub webhook secret
+verify-github = true          # Never turn this off on a public deployment
+
+# Automatic changelog generation. Leave repo-path unset to disable.
+[web.changelog]
+# repo-path = "/srv/vgstation13"
+# repo-name = "toomykins/vgstation13"
+delay = 30                    # Seconds to coalesce rapid merges before running git
+# ssh-key = "/home/mommi/.ssh/id_ed25519"

@@ -1,0 +1,16 @@
+# One service. v2 needed two containers -- this one and a Rust Rocket server --
+# because the webhook front end lived in WebMoMMI; it's folded in now.
+services:
+  mommi:
+    build: .
+    container_name: mommi
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+    ports:
+      - "1679:1679"      # commloop, from the game server
+      - "40000:40000"    # HTTP: GitHub webhooks and BYOND nudges
+    # If the game server runs on this same host and talks to 127.0.0.1, swap the
+    # ports block above for:
+    #   network_mode: host
