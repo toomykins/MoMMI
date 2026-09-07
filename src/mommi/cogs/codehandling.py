@@ -58,6 +58,10 @@ DM_TEMPLATE = (
 )
 
 
+class SandboxUnavailable(RuntimeError):
+    """A configured sandbox can't actually run here."""
+
+
 class CodeHandling(MoMMICog):
     @regex_command("runcode", r"```(?:(?P<language>[^\r\n]*)\r?\n)?(?P<code>[\s\S]*?)```")
     async def runcode(
@@ -116,9 +120,12 @@ class CodeHandling(MoMMICog):
         daemon_path = Path(str(daemon))
         env = self._byond_env(ctx, daemon_path)
         system = Path(env["BYOND_SYSTEM"])
+        try:
+            wrap = _sandbox_wrapper(ctx, system)
+        except SandboxUnavailable as e:
+            LOGGER.error("DM execution refused: %s", e)
+            return str(e)
 
-
-        wrap = _sandbox_wrapper(ctx, system)
 
         if DEFINES_ENTRY_RE.search(code):
             source = code
@@ -221,6 +228,34 @@ def _indent(code: str) -> str:
     return "\n".join(out)
 
 
+def _bwrap_works(bwrap: str) -> bool:
+    """Whether bwrap can actually create its namespaces here.
+
+    Cached. In a container bwrap usually can't (Docker blocks unprivileged user
+    namespaces without --privileged), so an admin who copies a bare-metal config
+    with `sandbox = "bwrap"` into Docker would otherwise get a confusing compile
+    failure. We probe once and fail loudly instead.
+    """
+    import subprocess
+
+    cache: dict[str, bool] = getattr(_bwrap_works, "_cache", {})
+    if bwrap in cache:
+        return cache[bwrap]
+    probe = [bwrap, "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib"]
+    for extra in ("/lib64", "/lib32"):
+        if Path(extra).exists():
+            probe += ["--ro-bind", extra, extra]
+    probe += ["--unshare-all", "true"]
+    try:
+        result = subprocess.run(probe, capture_output=True, timeout=10)
+        ok = result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        ok = False
+    cache[bwrap] = ok
+    _bwrap_works._cache = cache  # type: ignore[attr-defined]
+    return ok
+
+
 def _throttle_prefix(ctx: ChannelContext) -> list[str]:
     nice_bin = shutil.which("nice")
     prlimit_bin = shutil.which("prlimit")
@@ -259,6 +294,16 @@ def _sandbox_wrapper(ctx: ChannelContext, byond_system: Path) -> Callable[[Path]
         return None
 
     bwrap = sandbox if sandbox != "bwrap" else (shutil.which("bwrap") or "bwrap")
+
+    if not _bwrap_works(bwrap):
+        # Configured but can't create namespaces. Fail closed: refuse to run DM
+        # rather than silently dropping the sandbox the admin asked for.
+        raise SandboxUnavailable(
+            "The `bwrap` sandbox is configured but can't create namespaces here "
+            "(common inside Docker, which blocks unprivileged user namespaces). "
+            "Run the bot on bare metal for bwrap, or drop `sandbox` from "
+            "modules.toml -- in a container the container itself is the boundary."
+        )
 
     def build(scratch: Path) -> list[str]:
         argv = [

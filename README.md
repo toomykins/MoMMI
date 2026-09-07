@@ -110,9 +110,11 @@ the server, and the cog finds DreamMaker/DreamDaemon automatically. It runs unde
 own namespaces -- so file/shell access and SSRF to the host are blocked. The one
 gap versus a bare-metal `bwrap` setup is `world.Export()` egress to *external*
 hosts (there is nothing sensitive to exfiltrate, but a cloud metadata endpoint
-would be reachable). `bwrap` needs unprivileged user namespaces, which Docker
-blocks by default; docker-compose.yml shows how to allow it if you want that
-last bit of isolation.
+would be reachable). **Don't set `sandbox = "bwrap"` in Docker** -- bwrap needs
+privileges only `--privileged` grants, which would defeat the container, so the
+bot fails DM closed if it's configured but can't run. To close the egress gap,
+put the container on a network that can't reach what you're worried about, or
+run the bot on bare metal where bwrap works natively.
 
 ### Directly
 

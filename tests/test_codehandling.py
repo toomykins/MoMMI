@@ -275,9 +275,10 @@ def test_sandbox_wrapper_is_none_when_unset():
     assert _sandbox_wrapper(FakeCtx(), Path("/opt/byond")) is None
 
 
-def test_sandbox_wrapper_builds_a_locked_down_bwrap():
+def test_sandbox_wrapper_builds_a_locked_down_bwrap(monkeypatch):
     from mommi.cogs.codehandling import SANDBOX_WORKDIR, _sandbox_wrapper
 
+    monkeypatch.setattr(codehandling, "_bwrap_works", lambda b: True)
     ctx = FakeCtx(**{"codehandling.sandbox": "/usr/bin/bwrap"})
     wrap = _sandbox_wrapper(ctx, Path("/opt/byond"))
     argv = wrap(Path("/tmp/scratch"))
@@ -478,3 +479,34 @@ async def test_real_dm_cpu_cap_beats_a_spin_loop():
 
 def _throttle_available() -> bool:
     return bool(shutil.which("nice") and shutil.which("prlimit"))
+
+
+async def test_dm_fails_closed_when_bwrap_configured_but_broken(monkeypatch):
+    """sandbox=bwrap that can't create namespaces (e.g. Docker) must refuse DM,
+    not silently run unsandboxed."""
+    monkeypatch.setattr(codehandling, "_bwrap_works", lambda b: False)
+    cog = codehandling.CodeHandling.__new__(codehandling.CodeHandling)
+    ctx = FakeCtx(**{"codehandling.dreammaker": "/x/DreamMaker",
+                     "codehandling.dreamdaemon": "/x/DreamDaemon",
+                     "codehandling.sandbox": "bwrap"})
+    result = await cog._run_dm(ctx, 'world.log << "hi"')
+    assert "can't create namespaces" in result
+    assert "bare metal" in result
+
+
+def test_sandbox_wrapper_raises_when_bwrap_broken(monkeypatch):
+    from mommi.cogs.codehandling import SandboxUnavailable, _sandbox_wrapper
+
+    monkeypatch.setattr(codehandling, "_bwrap_works", lambda b: False)
+    ctx = FakeCtx(**{"codehandling.sandbox": "bwrap"})
+    with pytest.raises(SandboxUnavailable):
+        _sandbox_wrapper(ctx, Path("/opt/byond"))
+
+
+def test_sandbox_wrapper_builds_when_bwrap_works(monkeypatch):
+    from mommi.cogs.codehandling import _sandbox_wrapper
+
+    monkeypatch.setattr(codehandling, "_bwrap_works", lambda b: True)
+    ctx = FakeCtx(**{"codehandling.sandbox": "/usr/bin/bwrap"})
+    wrap = _sandbox_wrapper(ctx, Path("/opt/byond"))
+    assert wrap is not None and "--unshare-all" in wrap(Path("/tmp/s"))

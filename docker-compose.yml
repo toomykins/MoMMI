@@ -16,11 +16,11 @@ services:
     #   network_mode: host
     #
     # DM code execution (if a server enables it) runs under BYOND -safe + a
-    # #include reject + nice/prlimit caps, inside the container's own namespaces
-    # -- file/shell access and SSRF to the host are already blocked. bwrap adds
-    # network-egress isolation for world.Export() but needs unprivileged user
-    # namespaces, which Docker blocks by default. To allow it (and then set
-    # `sandbox = "bwrap"` in modules.toml), uncomment:
-    #   security_opt:
-    #     - seccomp=unconfined
-    # and leave `sandbox` unset otherwise.
+    # #include reject + nice/prlimit caps, inside the container's own namespaces.
+    # Do NOT set `sandbox = "bwrap"` in modules.toml here: bwrap needs privileges
+    # that only --privileged grants (which would defeat the container), and the
+    # bot fails DM closed if it's set but can't run. In a container the container
+    # IS the sandbox -- host files and host-localhost are already unreachable.
+    # The only thing bwrap would add is blocking world.Export() to EXTERNAL hosts;
+    # if that matters (e.g. a cloud metadata endpoint), put this service on a
+    # network that can't reach it, or run the bot on bare metal where bwrap works.
