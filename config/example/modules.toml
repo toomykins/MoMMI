@@ -81,6 +81,17 @@ howdoicode = "i dunno lol"
 # nice = 19
 # cpu-seconds = 15
 # memory-mb = 512
+#
+# --- Python execution (only if you add "python" to a server's languages) ---
+# There is NO in-process Python path. The snippet is piped to this command on
+# stdin (never interpolated into a shell line), so the command decides what runs.
+# Pick ONE that isolates the filesystem and network. Leave unset to keep Python off.
+#
+# bubblewrap (lightweight, no daemon; needs `apt install bubblewrap`):
+# python-sandbox = "bwrap --ro-bind /usr /usr --ro-bind /lib /lib --ro-bind /lib64 /lib64 --ro-bind /bin /bin --proc /proc --dev /dev --tmpfs /tmp --unshare-all --uid 65534 --gid 65534 --die-with-parent --new-session python3 -I -"
+#
+# docker (heavier, stronger isolation; needs the docker socket):
+# python-sandbox = "docker run --rm -i --network=none --memory=128m --pids-limit=64 --read-only python:3.12-slim python -I -"
 
 # Python runs ONLY through this external sandbox; the snippet arrives on stdin
 # and is never interpolated into a shell line. MoMMI has no in-process execution

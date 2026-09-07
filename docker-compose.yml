@@ -14,3 +14,13 @@ services:
     # If the game server runs on this same host and talks to 127.0.0.1, swap the
     # ports block above for:
     #   network_mode: host
+    #
+    # DM code execution (if a server enables it) runs under BYOND -safe + a
+    # #include reject + nice/prlimit caps, inside the container's own namespaces
+    # -- file/shell access and SSRF to the host are already blocked. bwrap adds
+    # network-egress isolation for world.Export() but needs unprivileged user
+    # namespaces, which Docker blocks by default. To allow it (and then set
+    # `sandbox = "bwrap"` in modules.toml), uncomment:
+    #   security_opt:
+    #     - seccomp=unconfined
+    # and leave `sandbox` unset otherwise.

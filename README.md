@@ -95,12 +95,24 @@ before. Run `@MoMMI sync` once after deploying to register them.
 ### Docker (recommended)
 
 The host's Python version stops mattering, which is the failure mode that
-actually killed v2.
+actually killed v2. The image bundles everything, including the BYOND toolchain
+for DM code execution.
 
 ```sh
 cp -r config/example/* config/     # then fill in the tokens
 docker compose up -d
 ```
+
+**DM code execution in Docker**: the BYOND toolchain is on the image's PATH, so
+enabling it needs no paths -- just `enabled = true` and `languages = ["dm"]` on
+the server, and the cog finds DreamMaker/DreamDaemon automatically. It runs under
+`-safe`, the `#include` reject, and nice/prlimit caps, all inside the container's
+own namespaces -- so file/shell access and SSRF to the host are blocked. The one
+gap versus a bare-metal `bwrap` setup is `world.Export()` egress to *external*
+hosts (there is nothing sensitive to exfiltrate, but a cloud metadata endpoint
+would be reachable). `bwrap` needs unprivileged user namespaces, which Docker
+blocks by default; docker-compose.yml shows how to allow it if you want that
+last bit of isolation.
 
 ### Directly
 

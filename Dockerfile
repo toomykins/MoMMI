@@ -2,17 +2,31 @@
 # mattering, which is what actually bit v2 when Python 3.6 fell out of distros.
 FROM python:3.12-slim
 
-# Nothing in MoMMI needs a compiler; matplotlib and the rest ship wheels.
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-# git is needed by the changelog generator, which shells out to it.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates \
+# git: for the changelog generator. bubblewrap: the DM code sandbox.
+# BYOND is 32-bit, so pull the i386 runtime it links against.
+RUN dpkg --add-architecture i386 \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      git ca-certificates bubblewrap unzip curl \
+      libc6:i386 libstdc++6:i386 libcurl4:i386 \
  && rm -rf /var/lib/apt/lists/*
+
+# BYOND toolchain for DM code execution (`runcode` dm). Pinned; off unless a
+# server enables codehandling. Lands on PATH so the cog auto-discovers it.
+ARG BYOND_MAJOR=516
+ARG BYOND_VERSION=516.1684
+RUN curl -fsSL "https://www.byond.com/download/build/${BYOND_MAJOR}/${BYOND_VERSION}_byond_linux.zip" -o /tmp/byond.zip \
+ && unzip -q /tmp/byond.zip -d /opt \
+ && rm /tmp/byond.zip
+ENV BYOND_SYSTEM=/opt/byond \
+    LD_LIBRARY_PATH=/opt/byond/bin \
+    PATH=/opt/byond/bin:$PATH
 
 COPY pyproject.toml README.md ./
 COPY src ./src
@@ -24,8 +38,6 @@ RUN useradd --create-home --uid 1000 mommi \
 USER mommi
 
 VOLUME ["/app/config", "/app/data"]
-
-# Commloop (game server) and the HTTP front end (webhooks, nudges).
 EXPOSE 1679 40000
 
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
