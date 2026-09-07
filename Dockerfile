@@ -17,13 +17,23 @@ RUN dpkg --add-architecture i386 \
       libc6:i386 libstdc++6:i386 libcurl4:i386 \
  && rm -rf /var/lib/apt/lists/*
 
-# BYOND toolchain for DM code execution (`runcode` dm). Pinned; off unless a
-# server enables codehandling. Lands on PATH so the cog auto-discovers it.
-ARG BYOND_MAJOR=516
-ARG BYOND_VERSION=516.1684
-RUN curl -fsSL "https://www.byond.com/download/build/${BYOND_MAJOR}/${BYOND_VERSION}_byond_linux.zip" -o /tmp/byond.zip \
- && unzip -q /tmp/byond.zip -d /opt \
- && rm /tmp/byond.zip
+# BYOND toolchain for DM code execution (`runcode` dm). Off unless a server
+# enables codehandling; lands on PATH so the cog auto-discovers it.
+#
+# Defaults to whatever BYOND currently publishes as latest (version.txt). Pin a
+# specific build if you need reproducible images or must match a game server:
+#   docker build --build-arg BYOND_VERSION=516.1684 .
+ARG BYOND_VERSION=latest
+RUN set -eux; \
+    version="$BYOND_VERSION"; \
+    if [ "$version" = "latest" ]; then \
+      version="$(curl -fsSL https://www.byond.com/download/version.txt | tr -d '[:space:]')"; \
+    fi; \
+    major="${version%%.*}"; \
+    curl -fsSL "https://www.byond.com/download/build/${major}/${version}_byond_linux.zip" -o /tmp/byond.zip; \
+    unzip -q /tmp/byond.zip -d /opt; \
+    rm /tmp/byond.zip; \
+    /opt/byond/bin/DreamMaker 2>&1 | head -1
 ENV BYOND_SYSTEM=/opt/byond \
     LD_LIBRARY_PATH=/opt/byond/bin \
     PATH=/opt/byond/bin:$PATH
