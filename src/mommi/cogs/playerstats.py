@@ -47,6 +47,13 @@ NAME_COLUMNS = 3
 
 MAX_FIELD = 1024
 
+MAX_ALERT_THRESHOLD = 500
+ALERT_OFF_WORDS = {"off", "stop", "clear", "remove"}
+
+
+def rearm_below(threshold: int) -> int:
+    return threshold - max(1, threshold // 5)
+
 
 @dataclass(frozen=True)
 class PopStats:
@@ -172,6 +179,37 @@ class PlayerStats(MoMMICog):
                     )
                 except Exception:
                     LOGGER.exception("Failed to record a player-count sample.")
+                try:
+                    await self.check_alerts(server.id, snapshot.key, snapshot.players)
+                except Exception:
+                    LOGGER.exception("Failed to process population alerts.")
+
+    async def check_alerts(self, guild_id: int, key: str, players: int) -> None:
+        alerts = await self.bot.storage.server_pop_alerts(guild_id, key)
+        firing = [a for a in alerts if a.armed and players >= a.threshold]
+        rearming = [a for a in alerts if not a.armed and players <= rearm_below(a.threshold)]
+
+        await self.bot.storage.set_pop_alerts_armed(
+            guild_id, key, [a.user_id for a in rearming], True
+        )
+        if not firing:
+            return
+
+        server = self.bot.servers.get(guild_id)
+        if server is None:
+            return
+        by_channel: dict[int, list[int]] = {}
+        for alert in firing:
+            by_channel.setdefault(alert.channel_id, []).append(alert.user_id)
+        for channel_id, user_ids in by_channel.items():
+            mentions = " ".join(f"<@{uid}>" for uid in user_ids)
+            await ChannelContext(server, channel_id).send(
+                f"{mentions} **{key}** is at {plural(players, 'player')}.",
+                allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+            )
+        await self.bot.storage.set_pop_alerts_armed(
+            guild_id, key, [a.user_id for a in firing], False
+        )
 
     @poll.before_loop
     async def _before_poll(self) -> None:
@@ -472,6 +510,83 @@ class PlayerStats(MoMMICog):
         else:
             await interaction.followup.send(embed=embed)
 
+    async def _popalert(
+        self, ctx: ChannelContext, user_id: int, first: str, second: str
+    ) -> str:
+        servers = self._servers(ctx)
+        if not servers:
+            return "No status configuration for this Discord server!"
+        storage = self.bot.storage
+        guild_id = ctx.server.id
+
+        if first.lower() in ALERT_OFF_WORDS:
+            if second and second not in servers:
+                return f"Unknown key `{second}`. Known: {', '.join(sorted(servers))}"
+            removed = await storage.delete_pop_alerts(guild_id, user_id, second or None)
+            return "Alert removed." if removed == 1 else (
+                f"{removed} alerts removed." if removed else "You have no alerts set."
+            )
+
+        if not first and not second:
+            alerts = await storage.user_pop_alerts(guild_id, user_id)
+            if not alerts:
+                return "You have no alerts set. Usage: `@MoMMI popalert [server] <players>`"
+            return "\n".join(
+                f"**{a.server_key}**: {plural(a.threshold, 'player')}" for a in alerts
+            )
+
+        if first.isdigit():
+            raw_count, requested = first, second
+        elif second.isdigit():
+            raw_count, requested = second, first
+        else:
+            return "Usage: `@MoMMI popalert [server] <players>`, or `@MoMMI popalert off [server]`."
+
+        threshold = int(raw_count)
+        if not 1 <= threshold <= MAX_ALERT_THRESHOLD:
+            return f"Player count must be between 1 and {MAX_ALERT_THRESHOLD}."
+        key = self._resolve(ctx, requested)
+        if key is None:
+            return f"Unknown key `{requested}`. Known: {', '.join(sorted(servers))}"
+
+        await storage.set_pop_alert(guild_id, user_id, key, threshold, ctx.id)
+        return (
+            f"I'll ping you here when **{key}** reaches {plural(threshold, 'player')}. "
+            "`@MoMMI popalert off` to stop."
+        )
+
+    @regex_command("popalert", r"popalert\b\s*(\S*)\s*(\S*)", help_topic="popalert")
+    async def popalert(
+        self, ctx: ChannelContext, match: re.Match[str], message: discord.Message
+    ) -> None:
+        await ctx.send(
+            await self._popalert(ctx, message.author.id, match.group(1).strip(), match.group(2).strip())
+        )
+
+    @app_commands.command(name="popalert", description="Get pinged when a server reaches a player count.")
+    @app_commands.describe(
+        players="Ping me at this many players. Leave blank to list your alerts.",
+        server="Which server. Leave blank for the default.",
+        off="Remove your alert (for the given server, or all of them).",
+    )
+    async def slash_popalert(
+        self,
+        interaction: discord.Interaction,
+        players: app_commands.Range[int, 1, MAX_ALERT_THRESHOLD] | None = None,
+        server: str = "",
+        off: bool = False,
+    ) -> None:
+        ctx = self._interaction_ctx(interaction)
+        if ctx is None:
+            await interaction.response.send_message("Not configured for this server.", ephemeral=True)
+            return
+        if off:
+            first, second = "off", server.strip()
+        else:
+            first, second = server.strip(), "" if players is None else str(players)
+        reply = await self._popalert(ctx, interaction.user.id, first, second)
+        await interaction.response.send_message(reply, ephemeral=True)
+
     @regex_command("graph", r"(?:graph|playergraph)\s*(\S*)\s*(\S*)", help_topic="graph")
     async def graph(self, ctx: ChannelContext, match: re.Match[str], message: discord.Message) -> None:
         requested, period = _split_args(match.group(1), match.group(2), DEFAULT_PERIOD)
@@ -534,6 +649,7 @@ class PlayerStats(MoMMICog):
 
     @slash_who.autocomplete("server")
     @slash_graph.autocomplete("server")
+    @slash_popalert.autocomplete("server")
     async def _server_autocomplete(
         self, interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
@@ -564,6 +680,14 @@ class PlayerStats(MoMMICog):
                 "the week draw the biggest crowds.\n\n"
                 "`@MoMMI highpop 7d` changes the window (default 30 days). "
                 "All times are UTC."
+            ),
+            "popalert": (
+                "`@MoMMI popalert 40` pings you in this channel when the default server "
+                "reaches 40 players. `@MoMMI popalert <server> 40` picks a server.\n"
+                "`@MoMMI popalert` lists your alerts, and `@MoMMI popalert off [server]` "
+                "removes them.\n\n"
+                "You're pinged once per climb: the alert re-arms after the count drops "
+                "back down a bit, so it won't spam you while it hovers at the line."
             ),
             "graph": (
                 "`@MoMMI graph` draws player numbers over the last 24 hours.\n"

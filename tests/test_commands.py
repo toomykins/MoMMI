@@ -439,3 +439,52 @@ async def test_bad_emoji_id_falls_back_rather_than_raising(harness, monkeypatch)
     cog = harness.bot.get_cog("GitHub")
     monkeypatch.setitem(harness.bot.config.modules, "github", {"emoji": {"PRopened": "nonsense"}})
     assert cog.emoji("PRopened") == "🟢"
+
+
+async def test_popalert_set_list_and_remove(harness):
+    await harness.say("popalert 40")
+    assert "reaches 40 players" in harness.only_text()
+    await harness.say("popalert")
+    assert harness.only_text() == "**vg**: 40 players"
+    await harness.say("popalert off")
+    assert harness.only_text() == "Alert removed."
+    await harness.say("popalert")
+    assert "no alerts" in harness.only_text()
+
+
+async def test_popalert_accepts_server_first(harness):
+    await harness.say("popalert vg 25")
+    assert "**vg** reaches 25 players" in harness.only_text()
+
+
+async def test_popalert_rejects_bad_input(harness):
+    await harness.say("popalert nosuchserver 10")
+    assert "Unknown key" in harness.only_text()
+    await harness.say("popalert 0")
+    assert "between 1 and" in harness.only_text()
+    await harness.say("popalert banana")
+    assert "Usage" in harness.only_text()
+
+
+async def test_popalert_pings_once_then_rearms(harness):
+    from tests.conftest import CHANNEL_ID, GUILD_ID, USER_ID
+
+    await harness.say("popalert 20")
+    cog = harness.bot.get_cog("PlayerStats")
+
+    harness.sent.clear()
+    await cog.check_alerts(GUILD_ID, "vg", 19)
+    assert harness.sent == []
+
+    await cog.check_alerts(GUILD_ID, "vg", 21)
+    assert harness.texts == [f"<@{USER_ID}> **vg** is at 21 players."]
+    assert harness.sent[0]["channel"] == CHANNEL_ID
+
+    harness.sent.clear()
+    await cog.check_alerts(GUILD_ID, "vg", 19)
+    await cog.check_alerts(GUILD_ID, "vg", 22)
+    assert harness.sent == []
+
+    await cog.check_alerts(GUILD_ID, "vg", 16)
+    await cog.check_alerts(GUILD_ID, "vg", 20)
+    assert len(harness.texts) == 1

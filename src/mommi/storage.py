@@ -67,6 +67,18 @@ CREATE TABLE IF NOT EXISTS player_counts (
 );
 CREATE INDEX IF NOT EXISTS player_counts_lookup
     ON player_counts (guild_id, server_key, ts);
+
+-- Per-user "ping me when the server reaches N players" alerts.
+CREATE TABLE IF NOT EXISTS pop_alerts (
+    guild_id   INTEGER NOT NULL,
+    user_id    INTEGER NOT NULL,
+    server_key TEXT    NOT NULL,
+    threshold  INTEGER NOT NULL,
+    channel_id INTEGER NOT NULL,
+    armed      INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (guild_id, user_id, server_key)
+);
+CREATE INDEX IF NOT EXISTS pop_alerts_server ON pop_alerts (guild_id, server_key);
 """
 
 
@@ -95,6 +107,16 @@ class MirrorEntry:
 class Sample:
     ts: float
     players: int
+
+
+@dataclass(frozen=True)
+class PopAlert:
+    guild_id: int
+    user_id: int
+    server_key: str
+    threshold: int
+    channel_id: int
+    armed: bool
 
 
 @dataclass(frozen=True)
@@ -305,3 +327,69 @@ class Storage:
         cursor = await self.db.execute("DELETE FROM player_counts WHERE ts < ?", (before,))
         await self.db.commit()
         return cursor.rowcount
+
+
+    async def set_pop_alert(
+        self, guild_id: int, user_id: int, server_key: str, threshold: int, channel_id: int
+    ) -> None:
+        await self.db.execute(
+            "INSERT INTO pop_alerts (guild_id, user_id, server_key, threshold, channel_id, armed) "
+            "VALUES (?, ?, ?, ?, ?, 1) "
+            "ON CONFLICT (guild_id, user_id, server_key) DO UPDATE SET "
+            "threshold = excluded.threshold, channel_id = excluded.channel_id, armed = 1",
+            (guild_id, user_id, server_key, threshold, channel_id),
+        )
+        await self.db.commit()
+
+    async def delete_pop_alerts(
+        self, guild_id: int, user_id: int, server_key: str | None = None
+    ) -> int:
+        if server_key is None:
+            cursor = await self.db.execute(
+                "DELETE FROM pop_alerts WHERE guild_id = ? AND user_id = ?", (guild_id, user_id)
+            )
+        else:
+            cursor = await self.db.execute(
+                "DELETE FROM pop_alerts WHERE guild_id = ? AND user_id = ? AND server_key = ?",
+                (guild_id, user_id, server_key),
+            )
+        await self.db.commit()
+        return cursor.rowcount
+
+    async def user_pop_alerts(self, guild_id: int, user_id: int) -> list[PopAlert]:
+        async with self.db.execute(
+            "SELECT * FROM pop_alerts WHERE guild_id = ? AND user_id = ? ORDER BY server_key",
+            (guild_id, user_id),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [_pop_alert(row) for row in rows]
+
+    async def server_pop_alerts(self, guild_id: int, server_key: str) -> list[PopAlert]:
+        async with self.db.execute(
+            "SELECT * FROM pop_alerts WHERE guild_id = ? AND server_key = ? ORDER BY user_id",
+            (guild_id, server_key),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [_pop_alert(row) for row in rows]
+
+    async def set_pop_alerts_armed(
+        self, guild_id: int, server_key: str, user_ids: list[int], armed: bool
+    ) -> None:
+        if not user_ids:
+            return
+        await self.db.executemany(
+            "UPDATE pop_alerts SET armed = ? WHERE guild_id = ? AND server_key = ? AND user_id = ?",
+            [(int(armed), guild_id, server_key, uid) for uid in user_ids],
+        )
+        await self.db.commit()
+
+
+def _pop_alert(row: Any) -> PopAlert:
+    return PopAlert(
+        guild_id=row["guild_id"],
+        user_id=row["user_id"],
+        server_key=row["server_key"],
+        threshold=row["threshold"],
+        channel_id=row["channel_id"],
+        armed=bool(row["armed"]),
+    )

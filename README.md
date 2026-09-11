@@ -74,6 +74,10 @@ These had all rotted quietly rather than failing loudly:
   of the week by average population, with a by-hour bar chart. Hour and weekday
   averages ignore buckets with too few samples, so one stray reading at 04:00
   can't be crowned the busiest hour of the month.
+- **`@MoMMI popalert [server] <players>`** — ping me in this channel when the
+  server reaches that many players. `popalert` lists your alerts, `popalert off
+  [server]` removes them. Checked on each player-count sample; an alert fires
+  once, then re-arms after the count drops about 20% below the line.
 
 Nothing upstream stores player-count history — ss13.moe's poller just rewrites a
 JSON cache every second — so the graph accumulates from the moment you deploy
